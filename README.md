@@ -1,199 +1,218 @@
-# Lab Docker & microservices : Open Liberty
+]633;E;printf '# Docker & Kubernetes – comptes rendus de TP\\n\\nAuteure : Mama Seynabou Dioum – ESIGELEC\\nFork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-Esigelec)\\n\\n| TP | Contenu | Compte rendu |\\n|---|---|---|\\n| Lab Docker | conteneurs, registre ECR, exécution sur AWS Fargate | ci-dessous |\\n| Lab Docker & microservices | deux microservices Open Liberty, sans puis avec Docker, image `full` vs `kernel-slim` | [lab-docker-microservices/README.md](lab-docker-microservices/README.md) |\\n\\n---\\n\\n# Lab Docker : conteneurs, registre ECR et exécution sur AWS Fargate\\n\\nRégion AWS `eu-north-1` (Stockholm)\\n';3c9c4c13-fa17-4a4f-b66f-fbfcf5735de2]633;C# Docker & Kubernetes – comptes rendus de TP
 
 Auteure : Mama Seynabou Dioum – ESIGELEC
-Réalisé en local, dans un GitHub Codespace (Java 25, Maven 3.10, Docker).
+Fork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-Esigelec)
+
+| TP | Contenu | Compte rendu |
+|---|---|---|
+| Lab Docker | conteneurs, registre ECR, exécution sur AWS Fargate | ci-dessous |
+| Lab Docker & microservices | deux microservices Open Liberty, sans puis avec Docker, image `full` vs `kernel-slim` | [lab-docker-microservices/README.md](lab-docker-microservices/README.md) |
+
+---
+
+# Lab Docker : conteneurs, registre ECR et exécution sur AWS Fargate
+
+Région AWS `eu-north-1` (Stockholm)
 
 ## Objectif
 
-1. Construire et lancer **sans Docker** deux microservices Java : `system` (port 9080) et `inventory` (port 9081), `inventory` appelant `system`.
-2. Les lancer **avec Docker**, à partir de l'image `icr.io/appcafe/open-liberty:full-java11-openj9-ubi`, avec un Dockerfile par microservice.
-3. Refaire l'étape 2 avec l'image allégée `icr.io/appcafe/open-liberty:kernel-slim-java11-openj9-ubi` et comparer.
+Pour chaque application des dossiers `lab-docker/1_ContainersAndDocker` et `lab-docker/1_ContainersAndDocker_2` :
 
-## Les deux microservices
+1. lancer l'application dans un conteneur
+2. vérifier qu'elle fonctionne
+3. créer un dépôt d'images sur AWS (**Amazon ECR**)
+4. connecter Docker au registre avec l'AWS CLI
+5. pousser l'image (`docker push`)
+6. l'exécuter sur un service CaaS (**AWS Fargate**, via Amazon ECS)
 
-| Microservice | Port | Route | Rôle |
-|---|---|---|---|
-| `system` | 9080 | `GET /system/properties` | renvoie les propriétés de la JVM qui l'exécute |
-| `inventory` | 9081 | `GET /inventory/systems/{hostname}` | appelle `system` sur la machine `{hostname}`, mémorise ses propriétés et les renvoie |
-| | | `GET /inventory/systems` | liste les systèmes déjà enregistrés |
-
-`SystemClient` construit l'adresse à appeler à partir du nom d'hôte demandé :
-`http://{hostname}:9080/system/properties`.
+## Démarche
 
 ```mermaid
-flowchart LR
-    U[Client<br/>curl / navigateur] -->|/inventory/systems/host| I[inventory<br/>:9081]
-    I -->|http://host:9080/system/properties| S[system<br/>:9080]
-    U -->|/system/properties| S
+flowchart TB
+    subgraph CS[GitHub Codespace - en local]
+        D[Dockerfile] -->|docker build| I[Image]
+        I -->|docker run| T[Test en local<br/>curl / docker logs]
+    end
+    I -->|docker tag + docker push| ECR[(Amazon ECR<br/>6 dépôts)]
+    ECR --> ECS
+    subgraph ECS[Cluster ECS lab-docker-cluster - Fargate]
+        TA[Tâche simple<br/>lab-docker-1, ubi-*]
+        SE[Service Express<br/>nginx, java + ALB HTTPS]
+    end
+    TA -->|http://IP:8080 ou logs| U[Navigateur / curl]
+    SE -->|https://...on.aws| U
 ```
 
-Les deux applications tournent sur **Open Liberty**, un serveur d'applications Java léger (Jakarta EE 10, MicroProfile 7). Le projet est un **projet Maven multi-modules** : un `pom.xml` parent et un module par microservice. Le code est compilé pour **Java 11** (`maven.compiler.target 11`).
+En résumé : **on construit en local, on stocke dans ECR, on exécute sur Fargate.**
+
+## Applications
+
+| Dossier | App | Image de base | Port | Test |
+|---|---|---|---|---|
+| `1_ContainersAndDocker` | Node.js / Express | `node:9.4.0-alpine` | 8080 | `GET /` |
+| `1_ContainersAndDocker_2/hello-world-nginx` | serveur nginx | `ubi8:8.0` | 8080 | `GET /` |
+| `1_ContainersAndDocker_2/hello-java` | app Java (JAR) | `ubi8/ubi:8.0` + OpenJDK 8 | 8080 | `GET /api/hello` |
+| `1_ContainersAndDocker_2/ubi-echo` | affiche `test` toutes les 5 s | `ubi8/ubi:8.0` | – | logs |
+| `1_ContainersAndDocker_2/ubi-sleep` | affiche `sleeping` toutes les 5 s | `ubi8:8.0` | – | logs |
+| `1_ContainersAndDocker_2/ubi-info` | affiche nom d'hôte, mémoire, disques | `ubi8/ubi:8.0` | – | logs |
 
 ---
 
-## Étape 1 : sans Docker
+## 1. Construire et tester en local
+
+### Application Node.js
 
 ```bash
-cd lab-docker-microservices
-mvn -q package
-mvn -pl system    liberty:create liberty:install-feature liberty:deploy liberty:start
-mvn -pl inventory liberty:create liberty:install-feature liberty:deploy liberty:start
-```
-
-```text
-$ curl -s localhost:9080/system/properties
-{"java.specification.version":"25", ... "wlp.install.dir":".../system/target/liberty/wlp/", ...}
-
-$ curl -s localhost:9081/inventory/systems/localhost
-{"java.specification.version":"25", ... "wlp.install.dir":".../system/target/liberty/wlp/", ...}
-```
-
-La réponse d'`inventory` contient le chemin d'installation du serveur **system** : `inventory` a bien appelé `system` pour obtenir ces propriétés. Sans Docker, le Java utilisé est celui du Codespace (Java 25).
-
-Arrêt : `mvn -pl system liberty:stop && mvn -pl inventory liberty:stop`
-
-> `liberty:start` seul démarre un serveur Liberty **vide**, sans fonctionnalités ni application (les `curl` ne renvoient rien). Il faut enchaîner `create`, `install-feature` et `deploy` avant `start`.
-
----
-
-## Étape 2 : avec Docker (image `full`)
-
-### Dockerfile (`system/Dockerfile`, identique pour `inventory`)
-
-```dockerfile
-FROM icr.io/appcafe/open-liberty:full-java11-openj9-ubi
-
-COPY --chown=1001:0 src/main/liberty/config /config/
-COPY --chown=1001:0 target/guide-containerize-system.war /config/apps
-
-RUN configure.sh
-```
-
-| Instruction | Rôle |
-|---|---|
-| `FROM …full-java11-openj9-ubi` | Open Liberty avec **toutes** ses fonctionnalités, Java 11 OpenJ9, base Red Hat UBI |
-| `COPY … /config/` | copie la configuration du serveur (`server.xml`) |
-| `COPY … .war /config/apps` | copie l'application compilée à l'étape 1 |
-| `RUN configure.sh` | prépare le serveur au moment du build (cache des classes) pour démarrer plus vite |
-| `--chown=1001:0` | le serveur tourne en utilisateur non root (1001) |
-
-### Build et lancement
-
-```bash
-docker build -t system:1.0-SNAPSHOT system/
-docker build -t inventory:1.0-SNAPSHOT inventory/
-
-docker run -d --name system    -p 9080:9080 system:1.0-SNAPSHOT
-docker run -d --name inventory -p 9081:9081 inventory:1.0-SNAPSHOT
+cd lab-docker/1_ContainersAndDocker
+docker build -t lab-docker-1 .
+docker run -d -p 8080:8080 --name app1 lab-docker-1
 docker ps
+curl localhost:8080
 ```
 
 ```text
-CONTAINER ID   IMAGE                    STATUS         PORTS                    NAMES
-1231f8a29180   inventory:1.0-SNAPSHOT   Up 5 seconds   0.0.0.0:9081->9081/tcp   inventory
-e234e350c4b2   system:1.0-SNAPSHOT      Up 12 seconds  0.0.0.0:9080->9080/tcp   system
+CONTAINER ID   IMAGE          COMMAND                  STATUS         PORTS                    NAMES
+c462fe72665b   lab-docker-1   "/bin/sh -c 'node ap…"   Up 18 seconds  0.0.0.0:8080->8080/tcp   app1
+
+Hello world from c462fe72665b! Your app is up and running!
 ```
 
-### Tests
+Le nom d'hôte affiché (`c462fe72665b`) est l'identifiant du conteneur.
+
+### Les 5 applications de `1_ContainersAndDocker_2`
 
 ```bash
-curl -s localhost:9080/system/properties
-SYSTEM_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' system)   # 172.17.0.2
-curl -s localhost:9081/inventory/systems/$SYSTEM_IP
-curl -s localhost:9081/inventory/systems/localhost
+cd lab-docker/1_ContainersAndDocker_2
+for d in hello-world-nginx ubi-echo ubi-info ubi-sleep; do docker build -t $d ./$d; done
+docker build -t hello-java -f hello-java/Containerfile ./hello-java   # fichier nommé Containerfile
+
+docker run -d -p 8081:8080 --name nginx hello-world-nginx
+docker run -d -p 8082:8080 --name java  hello-java
+for d in ubi-echo ubi-sleep ubi-info; do docker run -d --name $d $d; done
+```
+
+Résultats :
+
+```text
+$ curl localhost:8081
+<h1>Hello, world from nginx!</h1>
+
+$ curl localhost:8082/api/hello
+Hello world from host bbf6a240a54b
+
+===== ubi-echo        ===== ubi-sleep       ===== ubi-info
+test                  sleeping              --- Host name:
+test                  sleeping              65bfb9ca449c
+test                  sleeping              --- Free memory
+                                            MemTotal: 8131872 kB ...
+```
+
+![nginx en local](captures/06-nginx-local.png)
+
+## 2. Créer les dépôts ECR et pousser les images
+
+```bash
+aws configure                      # utilisateur IAM, région eu-north-1
+export AWS_PAGER=""
+REG=251783195098.dkr.ecr.eu-north-1.amazonaws.com
+
+aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin $REG
+
+for d in lab-docker-1 hello-world-nginx hello-java ubi-echo ubi-sleep ubi-info; do
+  aws ecr create-repository --repository-name $d --region eu-north-1
+  docker tag $d $REG/$d:latest
+  docker push $REG/$d:latest
+done
 ```
 
 ```text
-{"java.specification.version":"11", "java.vm.name":"Eclipse OpenJ9 VM", "wlp.install.dir":"/opt/ol/wlp/", ...}
-{"java.specification.version":"11", ... }                                     <- via l'IP du conteneur system
-{ "error" : "Unknown hostname or the system service may not be running on localhost" }
+Login Succeeded
+latest: digest: sha256:1114cd54fbeb...  (lab-docker-1)
+latest: digest: sha256:d3e4535ab5f2...  (hello-world-nginx)
+latest: digest: sha256:95318d14892d...  (hello-java)
+...
 ```
 
-- `system` tourne désormais sur le **Java 11 OpenJ9 de l'image**, installé dans `/opt/ol/wlp/`.
-- `inventory` joint `system` par l'**IP du conteneur sur le réseau Docker** (`172.17.0.2`).
-- **`localhost` ne fonctionne plus** : dans le conteneur `inventory`, `localhost` désigne `inventory` lui-même, où `system` ne tourne pas. Chaque conteneur a sa propre pile réseau.
+![Image lab-docker-1 dans ECR](captures/01-ecr-lab-docker-1.png)
+![Les 6 dépôts ECR](captures/07-ecr-6-depots.png)
 
-Dans le navigateur (ports redirigés par le Codespace) :
+## 3. Exécuter les images sur AWS Fargate
 
-![system /system/properties](captures/04-system-properties.png)
-![inventory /inventory/systems](captures/05-inventory-systems.png)
+### Cluster et définition de tâche
 
-L'inventaire contient bien le système `172.17.0.2` (`"total":1`).
+- **Cluster** `lab-docker-cluster`, infrastructure **Fargate uniquement** (aucune instance EC2 à gérer)
+- **Définition de tâche** : image ECR, 0,25 vCPU, 0,5 Go (1 Go pour `hello-java`), port 8080 pour les serveurs web, rôle d'exécution `ecsTaskExecutionRole` (permet à Fargate de récupérer l'image dans ECR et d'écrire les logs dans CloudWatch)
 
-Pages d'accueil des deux serveurs (`inventory` liste en plus *MicroProfile Config*, seule fonctionnalité qui diffère dans les `server.xml`) :
+![Cluster ECS](captures/02-cluster-ecs.png)
+![Définition de tâche](captures/03-definition-tache.png)
 
-![Accueil inventory](captures/01-accueil-inventory.png)
-![Accueil system](captures/02-accueil-system.png)
+### Application Node.js : tâche simple
 
-![Ports redirigés : 9080 et 9081 servis par Docker](captures/03-ports-codespace.png)
+Lancée avec « Exécuter une nouvelle tâche », IP publique activée, groupe de sécurité ouvrant le port 8080.
+
+```text
+$ curl http://16.16.171.147:8080
+Hello world from ip-172-31-13-206.eu-north-1.compute.internal! Your app is up and running!
+```
+
+Le nom d'hôte est désormais celui de la tâche Fargate dans le VPC AWS : c'est bien le service CaaS qui exécute l'image.
+
+![Tâche Fargate en cours](captures/04-tache-fargate.png)
+![curl vers la tâche Fargate](captures/05-curl-fargate-lab-docker-1.png)
+
+### nginx et Java : services ECS Express
+
+Le **mode Express** d'ECS crée en une fois un service Fargate, un **Application Load Balancer**, un certificat et une **URL publique HTTPS** (`https://….ecs.eu-north-1.on.aws`).
+
+![Service Express nginx](captures/08-express-nginx.png)
+
+### Les conteneurs `ubi-*` : tâches simples
+
+Ce ne sont pas des serveurs web (aucun port) : ils sont lancés comme **tâches simples**, et leur sortie se vérifie dans l'onglet **Journaux** de la tâche (CloudWatch). `ubi-info` affiche ses informations puis se termine : la tâche passe ensuite à l'état *Arrêtée*, ce qui est normal.
+
+Le script [`lab2-fargate.sh`](lab2-fargate.sh) automatise cette étape avec l'AWS CLI (définitions de tâche, lancement, affichage des résultats).
 
 ---
 
-## Étape 3 : image `kernel-slim`
-
-L'image `kernel-slim` ne contient que le **noyau** de Liberty. `features.sh` lit le `server.xml` et n'installe que les fonctionnalités déclarées. La configuration doit donc être copiée **avant** `features.sh`.
-
-### `system/Dockerfile.slim` (identique pour `inventory`)
-
-```dockerfile
-FROM icr.io/appcafe/open-liberty:kernel-slim-java11-openj9-ubi
-COPY --chown=1001:0 src/main/liberty/config /config/
-RUN features.sh
-COPY --chown=1001:0 target/guide-containerize-system.war /config/apps
-RUN configure.sh
-```
-
-```bash
-docker build -t system:slim    -f system/Dockerfile.slim    system/
-docker build -t inventory:slim -f inventory/Dockerfile.slim inventory/
-
-docker rm -f system inventory
-docker run -d --name system    -p 9080:9080 system:slim
-docker run -d --name inventory -p 9081:9081 inventory:slim
-```
-
-Les tests de l'étape 2 donnent les mêmes résultats (`system` répond, `inventory` joint `172.17.0.2`).
-
-### Comparaison des tailles
-
-```text
-$ docker images
-IMAGE                    DISK USAGE   CONTENT SIZE
-inventory:1.0-SNAPSHOT   1.93GB       728MB
-inventory:slim           1.17GB       393MB
-system:1.0-SNAPSHOT      1.93GB       726MB
-system:slim              1.17GB       391MB
-```
-
-| | `full` | `kernel-slim` | Gain |
-|---|---|---|---|
-| `system` | 726 Mo | 391 Mo | −335 Mo (≈ −46 %) |
-| `inventory` | 728 Mo | 393 Mo | −335 Mo (≈ −46 %) |
-
-**Pour la même application, l'image `kernel-slim` est environ 46 % plus légère.**
-
-| | `full` | `kernel-slim` |
-|---|---|---|
-| Contenu | toutes les fonctionnalités Liberty | noyau + fonctionnalités du `server.xml` |
-| Taille | ≈ 730 Mo | ≈ 390 Mo |
-| Dockerfile | plus simple | une étape `features.sh`, ordre des instructions à respecter |
-| Avantages | rien à installer | téléchargement et déploiement plus rapides, moins d'espace dans le registre, **surface d'attaque réduite** |
-
----
-
-## Problèmes rencontrés
+## Problèmes rencontrés et solutions
 
 | Symptôme | Cause | Solution |
 |---|---|---|
-| `curl` vide après `liberty:start` | serveur démarré sans fonctionnalités ni application | `liberty:create liberty:install-feature liberty:deploy liberty:start` |
-| `docker inspect … .NetworkSettings.IPAddress` : *map has no entry* | les versions récentes de Docker ne remplissent plus ce champ | `{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}` |
-| `/inventory/systems/localhost` en erreur dans Docker | `localhost` désigne le conteneur `inventory` lui-même | utiliser l'IP du conteneur `system` |
-| `http://localhost:9080` ne répond pas dans le navigateur du PC | Docker tourne dans le Codespace (cloud), pas sur le PC | `curl localhost:…` dans le terminal du Codespace, ou les adresses `…-9080.app.github.dev` |
-| Avertissements `PKIX path building failed … maven.java.net` | ancien dépôt Maven qui n'existe plus | sans conséquence |
+| `hello-java` renvoie `404` sur `/` | l'app n'expose que la route `/api/hello` | tester `GET /api/hello` |
+| Service Express `hello-java` : *« ECS replaced 1 tasks due to an unhealthy status »* | le health check du load balancer visait `/`, qui renvoie 404 : la tâche était jugée malade et remplacée en boucle | chemin de health check = `/api/hello`, port 8080 |
+| Risque de plantage de `hello-java` avec 0,5 Go | la JVM réserve à elle seule 512 Mo (`-Xmx512m` dans le Containerfile) | mémoire de tâche = 1 Go |
+| Terminal bloqué sur `(END)`, puis plus d'affichage | l'AWS CLI ouvre un lecteur page par page | `q`, puis `reset` ; `export AWS_PAGER=""` |
+| `docker build` : *path not found* | commande lancée depuis la racine du dépôt | se placer dans `lab-docker/1_ContainersAndDocker_2` |
+
+### Déploiement bleu/vert
+
+La correction du service `hello-java` a déclenché un **déploiement bleu/vert** : la nouvelle version (verte) est lancée à côté de l'ancienne (bleue), le trafic bascule progressivement (5 %, puis davantage, avec 3 minutes d'observation entre chaque palier), et une alarme peut déclencher un retour automatique à l'ancienne version. La nouvelle cible est passée à **1 sain / 0 malsain**.
+
+![Service Java : tâche malsaine avant correction](captures/09-express-java-unhealthy.png)
+![Déploiement bleu/vert après correction](captures/10-deploiement-bleu-vert.png)
+
+---
+
+## Vocabulaire
+
+| Terme | Définition |
+|---|---|
+| **Image** | modèle en lecture seule d'un conteneur (système de base, dépendances, code, commande de démarrage) |
+| **Conteneur** | une image en cours d'exécution, processus isolé partageant le noyau de l'hôte |
+| **Dockerfile / Containerfile** | fichier décrivant la construction de l'image, couche par couche |
+| **Tag / digest** | étiquette de version (`latest`) / empreinte unique `sha256` d'une image |
+| **Registre, dépôt** | serveur qui stocke les images (ECR) / emplacement d'une image et de ses tags |
+| **CaaS** | service cloud qui exécute des conteneurs sans gérer de serveur (Fargate, Cloud Run) |
+| **Cluster ECS** | espace logique qui regroupe tâches et services |
+| **Définition de tâche** | la « recette » d'exécution : image, CPU, mémoire, ports, logs |
+| **Tâche** | un ou plusieurs conteneurs en cours d'exécution (≈ pod Kubernetes) |
+| **Service** | maintient N tâches en vie, les remplace si elles tombent, peut s'attacher à un load balancer (≈ Deployment + Service Kubernetes) |
 
 ## Nettoyage
 
-```bash
-docker rm -f system inventory
-docker rmi system:1.0-SNAPSHOT inventory:1.0-SNAPSHOT system:slim inventory:slim
-```
+Pour éviter des frais (Fargate et les load balancers sont facturés à l'heure) :
+
+- ECS : supprimer les services Express (supprime aussi leur load balancer), arrêter les tâches, supprimer le cluster
+- ECR : supprimer les 6 dépôts
+- CloudWatch : supprimer les groupes de journaux
+- EC2 : supprimer le groupe de sécurité `lab-docker-sg`
