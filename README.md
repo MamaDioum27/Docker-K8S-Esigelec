@@ -1,4 +1,4 @@
-]633;E;printf '# Docker & Kubernetes – comptes rendus de TP\\n\\nAuteure : Mama Seynabou Dioum – ESIGELEC\\nFork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-Esigelec)\\n\\n| TP | Contenu | Compte rendu |\\n|---|---|---|\\n| Lab Docker | conteneurs, registre ECR, exécution sur AWS Fargate | ci-dessous |\\n| Lab Docker & microservices | deux microservices Open Liberty, sans puis avec Docker, image `full` vs `kernel-slim` | [lab-docker-microservices/README.md](lab-docker-microservices/README.md) |\\n\\n---\\n\\n# Lab Docker : conteneurs, registre ECR et exécution sur AWS Fargate\\n\\nRégion AWS `eu-north-1` (Stockholm)\\n';3c9c4c13-fa17-4a4f-b66f-fbfcf5735de2]633;C# Docker & Kubernetes – comptes rendus de TP
+# Docker & Kubernetes – comptes rendus de TP
 
 Auteure : Mama Seynabou Dioum – ESIGELEC
 Fork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-Esigelec)
@@ -7,6 +7,7 @@ Fork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-
 |---|---|---|
 | Lab Docker | conteneurs, registre ECR, exécution sur AWS Fargate | ci-dessous |
 | Lab Docker & microservices | deux microservices Open Liberty, sans puis avec Docker, image `full` vs `kernel-slim` | [lab-docker-microservices/README.md](lab-docker-microservices/README.md) |
+| Lab Kubernetes | pod, deployment, service, mise à l'échelle, rolling update, rollback, ConfigMap (minikube) | [labs-docker-k8s/README.md](labs-docker-k8s/README.md) |
 
 ---
 
