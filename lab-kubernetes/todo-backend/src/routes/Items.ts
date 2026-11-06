@@ -23,5 +23,5 @@ export function handleReadAll(req: Request, res: Response) {
 }
 
 export function handleDelete(req: Request, res: Response) {
-  deleteTodoItem(Number(req.params.id)).then(() => res.json({}));
+  deleteTodoItem(Number((req.params as any).id)).then(() => res.json({}));
 }

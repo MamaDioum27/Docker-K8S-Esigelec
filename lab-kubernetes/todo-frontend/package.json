@@ -42,7 +42,7 @@
     ]
   },
   "devDependencies": {
-    "@types/minimatch": "^6.0.0",
+    "@types/minimatch": "5.1.2",
     "prettier": "^2.2.1"
   }
 }
