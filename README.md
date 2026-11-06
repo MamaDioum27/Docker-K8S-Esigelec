@@ -9,6 +9,7 @@ Fork de [oumarkouf/Docker-K8S-Esigelec](https://github.com/oumarkouf/Docker-K8S-
 | Lab Docker & microservices | deux microservices Open Liberty, sans puis avec Docker, image `full` vs `kernel-slim` | [lab-docker-microservices/README.md](lab-docker-microservices/README.md) |
 | Lab Kubernetes | pod, deployment, service, mise à l'échelle, rolling update, rollback, ConfigMap (minikube) | [labs-docker-k8s/README.md](labs-docker-k8s/README.md) |
 | Lab application complète | To-do : frontend, backend et MariaDB avec Docker puis un seul YAML Kubernetes | [lab-kubernetes/README.md](lab-kubernetes/README.md) |
+| Lab Argo CD | GitOps : installation, guestbook, application To-do depuis ce dépôt, synchronisation et self-heal | [lab-argocd/README.md](lab-argocd/README.md) |
 
 ---
 
