@@ -121,6 +121,8 @@ Le build du backend signalait d'ailleurs ce problème : `SecretsUsedInArgOrEnv: 
 
 **`imagePullPolicy: IfNotPresent`** sur le backend et le frontend : avec le tag `latest`, Kubernetes tente par défaut de télécharger l'image ; or elle n'existe que dans minikube.
 
+**`strategy: Recreate` pour MariaDB** : par défaut, un Deployment utilise `RollingUpdate`, qui démarre le nouveau pod avant d'arrêter l'ancien. Pour une base de données, cela ferait tourner deux instances en même temps sur les mêmes données. `Recreate` arrête l'ancien pod avant de lancer le nouveau.
+
 **Un initContainer qui attend la base** avant de démarrer le backend :
 
 ```yaml
